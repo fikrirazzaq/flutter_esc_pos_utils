@@ -14,9 +14,11 @@ class Generator {
   final PaperSize _paperSize;
   CapabilityProfile _profile;
   int? _maxCharsPerLine;
+
   // Global styles
   String? _codeTable;
   PosFontType? _font;
+
   // Current styles
   PosStyles _styles = PosStyles();
   int spaceBetweenRows;
@@ -25,6 +27,8 @@ class Generator {
   int _getMaxCharsPerLine(PosFontType? font) {
     if (_paperSize == PaperSize.mm58) {
       return (font == null || font == PosFontType.fontA) ? 32 : 42;
+    } else if (_paperSize == PaperSize.mm8042) {
+      return (font == null || font == PosFontType.fontA) ? 42 : 56;
     } else {
       return (font == null || font == PosFontType.fontA) ? 48 : 64;
     }
@@ -209,6 +213,7 @@ class Generator {
     return ((0xFFFFFFFF ^ (0x1 << shift)) & uint32) |
         ((newValue ? 1 : 0) << shift);
   }
+
   // ************************ (end) Internal helpers  ************************
 
   //**************************** Public command generators ************************
@@ -744,6 +749,7 @@ class Generator {
     bytes += emptyLines(linesAfter + 1);
     return bytes;
   }
+
   // ************************ (end) Public command generators ************************
 
   // ************************ (end) Internal command generators ************************

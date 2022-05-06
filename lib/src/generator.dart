@@ -4,11 +4,11 @@ import 'package:hex/hex.dart';
 import 'package:image/image.dart';
 import 'package:gbk_codec/gbk_codec.dart';
 import 'package:flutter_esc_pos_utils/flutter_esc_pos_utils.dart';
-import 'enums.dart';
 import 'commands.dart';
 
 class Generator {
-  Generator(this._paperSize, this._profile, {this.spaceBetweenRows = 5});
+  Generator(this._paperSize, this._profile,
+      {this.spaceBetweenRows = 5, this.codec = latin1});
 
   // Ticket config
   final PaperSize _paperSize;
@@ -21,6 +21,7 @@ class Generator {
 
   // Current styles
   PosStyles _styles = PosStyles();
+  final Codec codec;
   int spaceBetweenRows;
 
   // ************************ Internal helpers ************************
@@ -70,7 +71,7 @@ class Generator {
         .replaceAll(" ", ' ')
         .replaceAll("•", '.');
     if (!isKanji) {
-      return latin1.encode(text);
+      return codec.encode(text);
     } else {
       return Uint8List.fromList(gbk_bytes.encode(text));
     }
@@ -227,6 +228,12 @@ class Generator {
     return bytes;
   }
 
+  /// Clear the buffer and reset text styles
+  List<int> clearStyle() {
+    return setStyles(
+        const PosStyles(height: PosTextSize.size1, width: PosTextSize.size1));
+  }
+
   /// Set global code table which will be used instead of the default printer's code table
   /// (even after resetting)
   List<int> setGlobalCodeTable(String? codeTable) {
@@ -257,7 +264,7 @@ class Generator {
   List<int> setStyles(PosStyles styles, {bool isKanji = false}) {
     List<int> bytes = [];
     if (styles.align != _styles.align) {
-      bytes += latin1.encode(styles.align == PosAlign.left
+      bytes += codec.encode(styles.align == PosAlign.left
           ? cAlignLeft
           : (styles.align == PosAlign.center ? cAlignCenter : cAlignRight));
       _styles = _styles.copyWith(align: styles.align);
@@ -387,7 +394,7 @@ class Generator {
 
   /// Cut the paper
   ///
-  /// [mode] is used to define the full or partial cut (if supported by the priner)
+  /// [mode] is used to define the full or partial cut (if supported by the printer)
   List<int> cut({PosCutMode mode = PosCutMode.full}) {
     List<int> bytes = [];
     bytes += emptyLines(5);
@@ -443,7 +450,7 @@ class Generator {
     return bytes;
   }
 
-  /// Reverse feed for [n] lines (if supported by the priner)
+  /// Reverse feed for [n] lines (if supported by the printer)
   List<int> reverseFeed(int n) {
     List<int> bytes = [];
     bytes += Uint8List.fromList(
@@ -539,16 +546,17 @@ class Generator {
         final List<bool> isLexemeChinese = list[1];
 
         // Print each lexeme using codetable OR kanji
+        int? colIndex = colInd;
         for (var j = 0; j < lexemes.length; ++j) {
           bytes += _text(
             _encode(lexemes[j], isKanji: isLexemeChinese[j]),
             styles: cols[i].styles,
-            colInd: colInd,
+            colInd: colIndex,
             colWidth: cols[i].width,
             isKanji: isLexemeChinese[j],
           );
           // Define the absolute position only once (we print one line only)
-          // colInd = null;
+          colIndex = null;
         }
       }
     }
@@ -556,14 +564,14 @@ class Generator {
     bytes += emptyLines(1);
 
     if (isNextRow) {
-      row(nextRow);
+      bytes += row(nextRow);
     }
     return bytes;
   }
 
   /// Print an image using (ESC *) command
   ///
-  /// [image] is an instanse of class from [Image library](https://pub.dev/packages/image)
+  /// [image] is an instance of class from [Image library](https://pub.dev/packages/image)
   List<int> image(Image imgSrc, {PosAlign align = PosAlign.center}) {
     List<int> bytes = [];
     // Image alignment
@@ -599,7 +607,9 @@ class Generator {
     // Adjust line spacing (for 16-unit line feeds): ESC 3 0x10 (HEX: 0x1b 0x33 0x10)
     bytes += [27, 51, 16];
     for (int i = 0; i < blobs.length; ++i) {
-      bytes += List.from(header)..addAll(blobs[i])..addAll('\n'.codeUnits);
+      bytes += List.from(header)
+        ..addAll(blobs[i])
+        ..addAll('\n'.codeUnits);
     }
     // Reset line spacing: ESC 2 (HEX: 0x1b 0x32)
     bytes += [27, 50];
@@ -623,7 +633,7 @@ class Generator {
     final int widthPx = image.width;
     final int heightPx = image.height;
     final int widthBytes = (widthPx + 7) ~/ 8;
-    final List<int> resterizedData = _toRasterFormat(image);
+    final List<int> rasterizedData = _toRasterFormat(image);
 
     if (imageFn == PosImageFn.bitImageRaster) {
       // GS v 0
@@ -634,7 +644,7 @@ class Generator {
       header.add(densityByte); // m
       header.addAll(_intLowHigh(widthBytes, 2)); // xL xH
       header.addAll(_intLowHigh(heightPx, 2)); // yL yH
-      bytes += List.from(header)..addAll(resterizedData);
+      bytes += List.from(header)..addAll(rasterizedData);
     } else if (imageFn == PosImageFn.graphics) {
       // 'GS ( L' - FN_112 (Image data)
       final List<int> header1 = List.from(cRasterImg.codeUnits);
@@ -644,7 +654,7 @@ class Generator {
       header1.addAll([49]); // c=49
       header1.addAll(_intLowHigh(widthBytes, 2)); // xL xH
       header1.addAll(_intLowHigh(heightPx, 2)); // yL yH
-      bytes += List.from(header1)..addAll(resterizedData);
+      bytes += List.from(header1)..addAll(rasterizedData);
 
       // 'GS ( L' - FN_50 (Run print)
       final List<int> header2 = List.from(cRasterImg.codeUnits);
